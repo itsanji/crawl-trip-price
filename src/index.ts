@@ -627,7 +627,7 @@ class TripComCrawler {
 
 async function crawlMultipleDays() {
   const baseUrl = 'https://jp.trip.com/hotels/detail/?cityId=248&hotelId=705327&checkIn=2025-10-03&checkOut=2025-10-04&crn=1&adult=1&children=0';
-  const days = 2;
+  const days = 30;
   
   const allPrices: { date: string; prices: string[]; url: string }[] = [];
 
@@ -635,7 +635,7 @@ async function crawlMultipleDays() {
   const config: CrawlerConfig = {
     url: baseUrl,
     outputDir: './output',
-    headless: false, // Visible browser for debugging
+    headless: true, // Visible browser for debugging
     timeout: 60000
   };
 
@@ -714,7 +714,12 @@ async function saveAllPrices(allPrices: { date: string; prices: string[]; url: s
 
 // Run the crawler
 if (require.main === module) {
-  crawlMultipleDays().catch(console.error);
+  const startAt = new Date();
+  crawlMultipleDays().then(() => {
+    const endAt = new Date();
+    const duration = endAt.getTime() - startAt.getTime();
+    console.log(`🕒 Crawling completed in ${duration / 1000 / 60} minutes`);
+  }).catch(console.error);
 }
 
 export { TripComCrawler, CrawlerConfig };
