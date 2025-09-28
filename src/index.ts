@@ -625,75 +625,136 @@ class TripComCrawler {
   }
 }
 
-async function crawlMultipleDays() {
-  const baseUrl = 'https://jp.trip.com/hotels/detail/?cityId=248&hotelId=705327&checkIn=2025-10-03&checkOut=2025-10-04&crn=1&adult=1&children=0';
+async function crawlMultipleHotels() {
+  const hotels = [
+    {
+      name: 'Hotel 1',
+      url: 'https://jp.trip.com/hotels/detail/?cityId=248&hotelId=705327&checkIn=2025-10-03&checkOut=2025-10-04&crn=1&adult=1&children=0'
+    },
+    {
+      name: 'Hyatt Regency Tokyo Bay', 
+      url: 'https://jp.trip.com/hotels/detail/?cityId=4828&hotelId=35953735&checkIn=2025-10-03&checkOut=2025-10-04&crn=1&adult=1&children=0'
+    }
+  ];
   const days = 30;
   
-  const allPrices: { date: string; prices: string[]; url: string }[] = [];
+  const allHotelData: { hotel_name: string; hotel_id: string; data: { date: string; prices: string[]; url: string }[] }[] = [];
 
-  // Initialize browser once
-  const config: CrawlerConfig = {
-    url: baseUrl,
-    outputDir: './output',
-    headless: true, // Visible browser for debugging
-    timeout: 60000
-  };
-
-  const crawler = new TripComCrawler(config);
-
-  try {
-    // Step 1: Open browser and load initial page
-    console.log('🚀 Opening browser and loading initial page...');
-    await crawler.initialize();
-    await crawler.page!.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+  // Crawl all hotels in parallel
+  console.log(`🚀 Starting parallel crawling of ${hotels.length} hotels...`);
+  
+  const crawlPromises = hotels.map(async (hotel) => {
+    console.log(`\n🏨 Starting crawl for: ${hotel.name}`);
+    const allPrices: { date: string; prices: string[]; url: string }[] = [];
     
-    // Wait for page to load
-    await crawler.randomDelay(3000, 5000);
-    
-    // Step 2: Get initial prices (Day 1)
-    console.log('\n🗓️  Day 1: Getting initial prices...');
-    const initialPrices = await crawler.extractPrices();
-    allPrices.push({
-      date: '2025-10-03',
-      prices: initialPrices,
-      url: baseUrl
-    });
-    console.log(`✅ Day 1 completed. Found ${initialPrices.length} prices.`);
+    // Extract hotel ID from URL
+    const hotelIdMatch = hotel.url.match(/hotelId=(\d+)/);
+    const hotelId = hotelIdMatch ? hotelIdMatch[1] : 'unknown';
 
-    // Step 3-8: For each additional day, change dates and get new prices
-    for (let i = 1; i < days; i++) {
-      console.log(`\n🗓️  Day ${i + 1}: Changing dates and getting new prices...`);
+    // Initialize browser for this hotel
+    const config: CrawlerConfig = {
+      url: hotel.url,
+      outputDir: './output',
+      headless: true,
+      timeout: 60000
+    };
+
+    const crawler = new TripComCrawler(config);
+
+    try {
+      // Step 1: Open browser and load initial page
+      console.log(`🚀 [${hotel.name}] Opening browser and loading initial page...`);
+      await crawler.initialize();
+      await crawler.page!.goto(hotel.url, { waitUntil: 'domcontentloaded' });
       
-      // Step 3: Click date picker
-      await crawler.interactWithDatePickerForNextDay();
-      
-      // Step 4: Wait for new prices to load
+      // Wait for page to load
       await crawler.randomDelay(3000, 5000);
       
-      // Step 5: Get new prices
-      const newPrices = await crawler.extractPrices();
-      const currentDate = new Date('2025-10-03');
-      currentDate.setDate(currentDate.getDate() + i);
-      const dateStr = currentDate.toISOString().split('T')[0];
-      
+      // Step 2: Get initial prices (Day 1)
+      console.log(`\n🗓️  [${hotel.name}] Day 1: Getting initial prices...`);
+      const initialPrices = await crawler.extractPrices();
       allPrices.push({
-        date: dateStr,
-        prices: newPrices,
-        url: crawler.page!.url()
+        date: '2025-10-03',
+        prices: initialPrices,
+        url: hotel.url
       });
+      console.log(`✅ [${hotel.name}] Day 1 completed. Found ${initialPrices.length} prices.`);
+
+      // Step 3-8: For each additional day, change dates and get new prices
+      for (let i = 1; i < days; i++) {
+        console.log(`\n🗓️  [${hotel.name}] Day ${i + 1}: Changing dates and getting new prices...`);
+        
+        // Step 3: Click date picker
+        await crawler.interactWithDatePickerForNextDay();
+        
+        // Step 4: Wait for new prices to load
+        await crawler.randomDelay(3000, 5000);
+        
+        // Step 5: Get new prices
+        const newPrices = await crawler.extractPrices();
+        const currentDate = new Date('2025-10-03');
+        currentDate.setDate(currentDate.getDate() + i);
+        const dateStr = currentDate.toISOString().split('T')[0];
+        
+        allPrices.push({
+          date: dateStr,
+          prices: newPrices,
+          url: crawler.page!.url()
+        });
+        
+        console.log(`✅ [${hotel.name}] Day ${i + 1} completed. Found ${newPrices.length} prices.`);
+      }
       
-      console.log(`✅ Day ${i + 1} completed. Found ${newPrices.length} prices.`);
+      console.log(`🎉 [${hotel.name}] Completed crawling!`);
+      
+      // Return this hotel's data
+      return {
+        hotel_name: hotel.name,
+        hotel_id: hotelId,
+        data: allPrices
+      };
+      
+    } catch (error) {
+      console.error(`❌ [${hotel.name}] Crawling failed:`, error);
+      return {
+        hotel_name: hotel.name,
+        hotel_id: hotelId,
+        data: []
+      };
+    } finally {
+      await crawler.close();
     }
-    
-  } catch (error) {
-    console.error('❌ Multi-day crawling failed:', error);
-  } finally {
-    await crawler.close();
-  }
+  });
+
+  // Wait for all hotels to complete crawling
+  console.log('\n⏳ Waiting for all hotels to complete...');
+  const results = await Promise.all(crawlPromises);
   
-  // Save all prices to a summary file
-  await saveAllPrices(allPrices);
-  console.log('\n🎉 Multi-day crawling completed!');
+  // Store all results
+  allHotelData.push(...results);
+  
+  // Save all hotel data to a summary file
+  await saveAllHotelData(allHotelData);
+  console.log('\n🎉 Multi-hotel crawling completed!');
+}
+
+async function saveAllHotelData(allHotelData: { hotel_name: string; hotel_id: string; data: { date: string; prices: string[]; url: string }[] }[]) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `multi-hotel-prices-${timestamp}.json`;
+  const filepath = path.join('./output', filename);
+
+  const cleanData = allHotelData.map(hotel => ({
+    hotel_name: hotel.hotel_name,
+    hotel_id: hotel.hotel_id,
+    dates: hotel.data.map(day => ({
+      booking_date: day.date,
+      url: day.url,
+      prices: day.prices
+    }))
+  }));
+
+  fs.writeFileSync(filepath, JSON.stringify(cleanData, null, 2), 'utf8');
+  console.log(`📊 Multi-hotel data saved to: ${filepath}`);
 }
 
 async function saveAllPrices(allPrices: { date: string; prices: string[]; url: string }[]) {
@@ -715,7 +776,7 @@ async function saveAllPrices(allPrices: { date: string; prices: string[]; url: s
 // Run the crawler
 if (require.main === module) {
   const startAt = new Date();
-  crawlMultipleDays().then(() => {
+  crawlMultipleHotels().then(() => {
     const endAt = new Date();
     const duration = endAt.getTime() - startAt.getTime();
     console.log(`🕒 Crawling completed in ${duration / 1000 / 60} minutes`);
