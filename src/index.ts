@@ -221,10 +221,10 @@ class TripComCrawler {
       console.log(`📄 Page loaded with status: ${response.status()}`);
 
       // Check if redirected to login (anti-bot detection)
-      const currentUrl = this.page.url();
-      if (currentUrl.includes('login') || currentUrl.includes('signin')) {
+      const pageUrl = this.page.url();
+      if (pageUrl.includes('login') || pageUrl.includes('signin')) {
         console.log('⚠️  Detected redirect to login page - possible bot detection');
-        console.log(`Current URL: ${currentUrl}`);
+        console.log(`Current URL: ${pageUrl}`);
       }
 
       // Wait for page to load with shorter timeout
@@ -238,11 +238,7 @@ class TripComCrawler {
       console.log('⏳ Waiting for dynamic content to load...');
       await this.randomDelay(3000, 5000);
       
-      // Add human-like behavior
-      await this.simulateHumanBehavior();
-
-      // Interact with date picker to change to next day
-      await this.interactWithDatePicker();
+      // Skip date picker interaction for single crawl
 
       // Wait for price elements to load
       console.log('💰 Waiting for price elements to load...');
@@ -257,20 +253,14 @@ class TripComCrawler {
       const prices = await this.extractPrices();
       console.log('💵 Extracted prices:', prices);
 
-      // Get page content
-      const bodyHTML = await this.page.content();
+      // Save prices to file
+      const currentUrl = this.page.url();
+      const checkInMatch = currentUrl.match(/checkIn=(\d{4}-\d{2}-\d{2})/);
+      const bookingDate = checkInMatch ? checkInMatch[1] : new Date().toISOString().split('T')[0];
       
-      // Save to file
-      await this.saveHTML(bodyHTML);
+      await this.savePrices(prices, bookingDate);
       
-      // Save prices to separate file
-      await this.savePrices(prices);
-      
-      // Get final URL after search
-      const finalUrl = this.page.url();
-      console.log(`🔗 Final URL: ${finalUrl}`);
-      
-      console.log('✅ Successfully crawled and saved HTML content');
+      console.log('✅ Successfully crawled and saved prices');
 
     } catch (error) {
       console.error('❌ Error during crawling:', error);
@@ -278,32 +268,6 @@ class TripComCrawler {
     }
   }
 
-  private async simulateHumanBehavior(): Promise<void> {
-    if (!this.page) return;
-
-    console.log('🤖 Simulating human behavior...');
-
-    // Random mouse movements
-    await this.page.mouse.move(
-      Math.random() * 800 + 100,
-      Math.random() * 600 + 100
-    );
-
-    // Random scroll
-    await this.page.evaluate(() => {
-      (globalThis as any).scrollTo(0, Math.random() * 500);
-    });
-
-    // Random delay
-    await this.randomDelay(500, 2000);
-
-    // Simulate reading behavior
-    await this.page.evaluate(() => {
-      (globalThis as any).scrollTo(0, Math.random() * 1000);
-    });
-
-    await this.randomDelay(1000, 3000);
-  }
 
   async interactWithDatePickerForNextDay(): Promise<void> {
     if (!this.page) return;
@@ -450,9 +414,7 @@ class TripComCrawler {
       let dateClicked = false;
       for (const selector of dateSelectors) {
         try {
-          console.log(`🔍 Trying date selector: ${selector}`);
           const dateElements = await this.page.$$(selector);
-          console.log(`Found ${dateElements.length} date elements with selector: ${selector}`);
           
           for (const element of dateElements) {
             try {
@@ -461,68 +423,48 @@ class TripComCrawler {
               const tagName = await element.evaluate(el => el.tagName);
               const classList = await element.getAttribute('class');
               
-              console.log(`  Element: ${tagName}, text="${text}", class="${classList}", visible=${isVisible}`);
-              
               if (isVisible && text && text.trim() === dayNumber) {
                 // If it's a span.day, click its parent td instead
                 if (tagName === 'SPAN' && classList?.includes('day')) {
-                  try {
-                    await element.evaluate(el => {
-                      const td = el.closest('td');
-                      if (td) td.click();
-                    });
-                    console.log(`✅ Clicked parent TD of span.day: ${dayNumber}`);
-                    dateClicked = true;
-                    break;
-                  } catch (error) {
-                    console.log('❌ Error clicking parent TD, trying direct click');
-                    await element.click();
-                    console.log(`✅ Clicked span.day directly: ${dayNumber}`);
-                    dateClicked = true;
-                    break;
-                  }
+                  await element.evaluate(el => {
+                    const td = el.closest('td');
+                    if (td) td.click();
+                  });
+                  console.log(`✅ Clicked date: ${dayNumber}`);
+                  dateClicked = true;
+                  break;
                 } else {
                   await element.click();
-                  console.log(`✅ Clicked date: ${dayNumber} with selector: ${selector}`);
+                  console.log(`✅ Clicked date: ${dayNumber}`);
                   dateClicked = true;
                   break;
                 }
               }
             } catch (error) {
-              console.log(`❌ Error checking element:`, error);
               continue;
             }
           }
           
           if (dateClicked) break;
         } catch (error) {
-          console.log(`❌ Error with date selector ${selector}:`, error);
           // Continue with next selector
         }
       }
       
       if (!dateClicked) {
-        console.log(`⚠️  Could not find clickable date: ${dayNumber}`);
-        
         // Manual search for td elements containing span.day with the exact date
-        console.log(`📋 Manual search for td elements with span.day containing "${dayNumber}"`);
         const allTdElements = await this.page.$$('td[role="gridcell"]');
-        console.log(`Found ${allTdElements.length} td[role="gridcell"] elements`);
         
-        for (let i = 0; i < allTdElements.length; i++) {
+        for (const td of allTdElements) {
           try {
-            const td = allTdElements[i];
             const spanDay = await td.$('span.day');
             if (spanDay) {
               const dayText = await spanDay.textContent();
               const isVisible = await td.isVisible();
-              const ariaLabel = await td.getAttribute('aria-label');
-              
-              console.log(`  TD ${i}: span.day="${dayText}", visible=${isVisible}, aria-label="${ariaLabel}"`);
               
               if (dayText && dayText.trim() === dayNumber && isVisible) {
                 await td.click();
-                console.log(`✅ Clicked TD with span.day: ${dayNumber} (manual search)`);
+                console.log(`✅ Clicked date: ${dayNumber}`);
                 dateClicked = true;
                 break;
               }
@@ -568,38 +510,27 @@ class TripComCrawler {
       let searchClicked = false;
       for (const selector of searchSelectors) {
         try {
-          console.log(`🔍 Trying selector: ${selector}`);
           const searchElements = await this.page.$$(selector);
-          console.log(`Found ${searchElements.length} elements with selector: ${selector}`);
-          
           if (searchElements.length > 0) {
-            // Try to click the first element
             await searchElements[0].click();
-            console.log(`🔍 Clicked search button with selector: ${selector}`);
+            console.log(`🔍 Search button clicked`);
             searchClicked = true;
             break;
           }
         } catch (error) {
-          console.log(`❌ Error with selector ${selector}:`, error);
           // Continue with next selector
         }
       }
 
       if (!searchClicked) {
         // Try to find button with text "検索"
-        console.log('🔍 Trying to find button by text content...');
         const searchButtons = await this.page.$$('button');
-        console.log(`Found ${searchButtons.length} button elements`);
-        
         for (const button of searchButtons) {
           try {
             const text = await button.textContent();
-            const classList = await button.getAttribute('class');
-            console.log(`Button text: "${text}", classes: "${classList}"`);
-            
             if (text && (text.includes('検索') || text.includes('Search'))) {
               await button.click();
-              console.log('🔍 Clicked search button by text content');
+              console.log('🔍 Search button clicked');
               searchClicked = true;
               break;
             }
@@ -608,160 +539,11 @@ class TripComCrawler {
           }
         }
       }
-
-      if (searchClicked) {
-        console.log('✅ Search button clicked successfully');
-      } else {
-        console.log('⚠️  Search button not found');
-        
-        // Debug: List all buttons with their classes
-        const allButtons = await this.page.$$('button');
-        console.log(`📋 Debug: Found ${allButtons.length} buttons on page:`);
-        for (let i = 0; i < Math.min(allButtons.length, 10); i++) {
-          try {
-            const button = allButtons[i];
-            const text = await button.textContent();
-            const classList = await button.getAttribute('class');
-            console.log(`  Button ${i}: text="${text}", class="${classList}"`);
-          } catch (error) {
-            console.log(`  Button ${i}: Error getting info`);
-          }
-        }
-      }
     } catch (error) {
       console.error('❌ Error clicking search button:', error);
     }
   }
 
-  private async interactWithDatePicker(): Promise<void> {
-    if (!this.page) return;
-
-    console.log('📅 Interacting with date picker...');
-
-    try {
-      // Look for date picker elements - try multiple selectors
-      const dateSelectors = [
-        '[class*="checkin"]',
-        '[class*="checkIn"]',
-        '[class*="check-in"]',
-        '[class*="date"]',
-        '[class*="calendar"]',
-        '[class*="searchBox"]',
-        '[class*="destination"]',
-        '[data-testid*="checkin"]',
-        '[data-testid*="date"]',
-        'input[type="date"]',
-        'input[placeholder*="日"]',
-        'input[placeholder*="date"]',
-        'div[class*="calen"]',
-        'div[class*="date"]'
-      ];
-
-      let dateElement = null;
-      for (const selector of dateSelectors) {
-        try {
-          const elements = await this.page.$$(selector);
-          if (elements.length > 0) {
-            dateElement = elements[0];
-            console.log(`✅ Found date element with selector: ${selector}`);
-            break;
-          }
-        } catch (error) {
-          // Continue with next selector
-        }
-      }
-
-      if (dateElement) {
-        // Click on the date element to open picker
-        await dateElement.click();
-        console.log('📅 Date picker opened');
-        
-        // Wait for date picker to appear
-        await this.randomDelay(1000, 2000);
-
-        // Try to find and click next day
-        const nextDaySelectors = [
-          '[class*="next"]',
-          '[class*="tomorrow"]',
-          '[class*="arrow"]',
-          'button[aria-label*="next"]',
-          'button[title*="next"]',
-          '.react-datepicker__navigation--next',
-          '.datepicker-next',
-          '[data-testid*="next"]'
-        ];
-
-        let nextDayClicked = false;
-        for (const selector of nextDaySelectors) {
-          try {
-            const nextElements = await this.page.$$(selector);
-            if (nextElements.length > 0) {
-              await nextElements[0].click();
-              console.log('➡️  Clicked next day button');
-              nextDayClicked = true;
-              break;
-            }
-          } catch (error) {
-            // Continue with next selector
-          }
-        }
-
-        if (!nextDayClicked) {
-          // Try to find tomorrow's date in the calendar
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          const tomorrowDate = tomorrow.getDate().toString();
-          
-          // Try different date selectors
-          const dateSelectors = [
-            `[data-day="${tomorrowDate}"]`,
-            `[aria-label*="${tomorrowDate}"]`,
-            `[title*="${tomorrowDate}"]`,
-            `[class*="day"]:contains("${tomorrowDate}")`,
-            `td:contains("${tomorrowDate}")`,
-            `div:contains("${tomorrowDate}")`
-          ];
-          
-          for (const selector of dateSelectors) {
-            try {
-              const dateElements = await this.page.$$(selector);
-              if (dateElements.length > 0) {
-                await dateElements[0].click();
-                console.log(`📅 Clicked tomorrow's date: ${tomorrowDate}`);
-                nextDayClicked = true;
-                break;
-              }
-            } catch (error) {
-              // Continue with next selector
-            }
-          }
-        }
-
-        if (nextDayClicked) {
-          console.log('✅ Date changed to next day');
-          // Wait for page to update automatically
-          await this.randomDelay(2000, 4000);
-          
-          // Check if we're still on the hotel detail page
-          const currentUrl = this.page.url();
-          if (currentUrl.includes('hotels/detail')) {
-            console.log('✅ Still on hotel detail page');
-          } else {
-            console.log(`⚠️  Redirected to: ${currentUrl}`);
-            // Try to navigate back to the hotel detail page
-            await this.page.goto(this.config.url, { waitUntil: 'domcontentloaded' });
-            console.log('🔄 Navigated back to hotel detail page');
-          }
-        } else {
-          console.log('⚠️  Could not change to next day');
-        }
-      } else {
-        console.log('⚠️  Date picker not found');
-      }
-    } catch (error) {
-      console.error('❌ Error interacting with date picker:', error);
-    }
-  }
 
   async randomDelay(min: number, max: number): Promise<void> {
     const delay = Math.random() * (max - min) + min;
@@ -819,30 +601,16 @@ class TripComCrawler {
     }
   }
 
-  private async saveHTML(html: string): Promise<void> {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `trip-com-${timestamp}.html`;
-    const filepath = path.join(this.config.outputDir, filename);
 
-    // Ensure output directory exists
-    if (!fs.existsSync(this.config.outputDir)) {
-      fs.mkdirSync(this.config.outputDir, { recursive: true });
-    }
-
-    fs.writeFileSync(filepath, html, 'utf8');
-    console.log(`💾 HTML saved to: ${filepath}`);
-  }
-
-  private async savePrices(prices: string[]): Promise<void> {
+  private async savePrices(prices: string[], bookingDate: string): Promise<void> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `prices-${timestamp}.json`;
     const filepath = path.join(this.config.outputDir, filename);
 
     const priceData = {
-      timestamp: new Date().toISOString(),
-      url: this.config.url,
-      prices: prices,
-      count: prices.length
+      booking_date: bookingDate,
+      url: this.page?.url() || this.config.url,
+      prices: prices
     };
 
     fs.writeFileSync(filepath, JSON.stringify(priceData, null, 2), 'utf8');
@@ -933,67 +701,16 @@ async function saveAllPrices(allPrices: { date: string; prices: string[]; url: s
   const filename = `multi-day-prices-${timestamp}.json`;
   const filepath = path.join('./output', filename);
 
-  const summaryData = {
-    timestamp: new Date().toISOString(),
-    totalDays: allPrices.length,
-    summary: allPrices.map(day => ({
-      date: day.date,
-      priceCount: day.prices.length,
-      prices: day.prices,
-      url: day.url
-    })),
-    allPrices: allPrices.flatMap(day => day.prices),
-    uniquePrices: [...new Set(allPrices.flatMap(day => day.prices))]
-  };
+  const cleanData = allPrices.map(day => ({
+    booking_date: day.date,
+    url: day.url,
+    prices: day.prices
+  }));
 
-  fs.writeFileSync(filepath, JSON.stringify(summaryData, null, 2), 'utf8');
+  fs.writeFileSync(filepath, JSON.stringify(cleanData, null, 2), 'utf8');
   console.log(`📊 Summary saved to: ${filepath}`);
-  
-  // Also save a simple text file
-  const textFilename = `prices-summary-${timestamp}.txt`;
-  const textFilepath = path.join('./output', textFilename);
-  
-  let textContent = `Multi-Day Price Summary\n`;
-  textContent += `=====================\n\n`;
-  
-  allPrices.forEach((day, index) => {
-    textContent += `Day ${index + 1} (${day.date}):\n`;
-    textContent += `URL: ${day.url}\n`;
-    textContent += `Prices (${day.prices.length}):\n`;
-    day.prices.forEach(price => {
-      textContent += `  - ${price}\n`;
-    });
-    textContent += `\n`;
-  });
-  
-  textContent += `\nAll Unique Prices:\n`;
-  summaryData.uniquePrices.forEach(price => {
-    textContent += `- ${price}\n`;
-  });
-  
-  fs.writeFileSync(textFilepath, textContent, 'utf8');
-  console.log(`📝 Text summary saved to: ${textFilepath}`);
 }
 
-async function main() {
-  const config: CrawlerConfig = {
-    url: 'https://jp.trip.com/hotels/detail/?cityId=248&hotelId=705327&checkIn=2025-10-03&checkOut=2025-10-04&crn=1&adult=1&children=0',
-    outputDir: './output',
-    headless: false, // Set to false for debugging
-    timeout: 60000
-  };
-
-  const crawler = new TripComCrawler(config);
-
-  try {
-    await crawler.initialize();
-    await crawler.crawl();
-  } catch (error) {
-    console.error('❌ Crawler failed:', error);
-  } finally {
-    await crawler.close();
-  }
-}
 
 // Run the crawler
 if (require.main === module) {

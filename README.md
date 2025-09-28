@@ -1,14 +1,13 @@
-# Trip.com Crawler with Anti-Bot Detection Bypass
+# Trip.com Price Crawler
 
-A TypeScript + Playwright crawler specifically designed to bypass anti-bot detection on Trip.com hotel pages.
+A clean TypeScript + Playwright crawler for extracting hotel prices from Trip.com with anti-bot detection bypass.
 
 ## Features
 
 - **Anti-Bot Detection Bypass**: Advanced stealth features to avoid detection
-- **Human-like Behavior**: Simulates real user interactions
-- **Stealth Mode**: Removes automation indicators and fingerprints
-- **HTML Logging**: Saves page content to output folder
-- **Configurable**: Easy to customize for different scenarios
+- **Multi-Day Price Collection**: Automatically changes dates and collects prices
+- **Clean JSON Output**: Only exports essential data (booking_date, url, prices)
+- **Date Picker Automation**: Automatically navigates calendar and selects dates
 
 ## Installation
 
@@ -18,82 +17,50 @@ npm install
 
 ## Usage
 
-### Development Mode
 ```bash
-npm run dev
+npm run multi-day
 ```
-
-### Production Mode
-```bash
-npm run crawl
-```
-
-## Configuration
-
-The crawler can be configured by modifying the `config` object in `src/index.ts`:
-
-```typescript
-const config: CrawlerConfig = {
-  url: 'https://jp.trip.com/hotels/detail/?cityId=248&hotelId=705327&checkIn=2025-10-03&checkOut=2025-10-04&crn=1&adult=1&children=0',
-  outputDir: './output',
-  headless: false, // Set to true for production
-  timeout: 30000
-};
-```
-
-## Anti-Bot Detection Features
-
-### 1. Stealth Browser Configuration
-- Removes automation indicators (`navigator.webdriver`)
-- Mocks browser plugins and languages
-- Overrides WebGL parameters
-- Removes automation-related properties
-
-### 2. Human-like Behavior
-- Random mouse movements
-- Realistic scrolling patterns
-- Random delays between actions
-- Simulates reading behavior
-
-### 3. Request Headers
-- Realistic user agent rotation
-- Proper Accept headers
-- Japanese locale settings
-- Timezone configuration
-
-### 4. Browser Arguments
-- Disables automation detection features
-- Removes automation-related flags
-- Optimizes for stealth operation
 
 ## Output
 
-The crawler saves the HTML content to the `output` folder with a timestamp:
+The crawler saves clean JSON data to the `output` folder:
+
+```json
+[
+  {
+    "booking_date": "2025-10-03",
+    "url": "https://jp.trip.com/hotels/detail/?cityId=248&hotelId=705327&checkIn=2025-10-03&checkOut=2025-10-04&crn=1&adult=1&children=0",
+    "prices": [
+      "20,950円",
+      "23,521円",
+      "26,760円"
+    ]
+  },
+  {
+    "booking_date": "2025-10-04", 
+    "url": "https://jp.trip.com/hotels/detail/?cityId=248&hotelId=705327&checkIn=2025-10-04&checkOut=2025-10-05&crn=1&adult=1&children=0",
+    "prices": [
+      "23,491円",
+      "26,707円"
+    ]
+  }
+]
 ```
-output/trip-com-2024-01-15T10-30-45-123Z.html
-```
 
-## Troubleshooting
+## How It Works
 
-### Bot Detection
-If you get redirected to a login page, the site has detected automation. Try:
-1. Increase random delays
-2. Use different user agents
-3. Enable headless mode
-4. Add proxy rotation
-
-### Performance
-For better performance:
-1. Set `headless: true` for production
-2. Adjust timeout values
-3. Optimize browser arguments
+1. Opens browser and loads initial hotel page
+2. Extracts prices for Day 1
+3. Opens date picker and selects next day dates
+4. Clicks search button to load new prices
+5. Extracts prices for Day 2
+6. Saves clean JSON with booking dates, URLs, and prices
 
 ## Dependencies
 
 - `playwright`: Browser automation
-- `user-agents`: Random user agent generation
+- `user-agents`: User agent rotation
 - `typescript`: Type safety
-- `ts-node`: Development execution
 
 ## License
 
