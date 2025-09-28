@@ -1,0 +1,32 @@
+{
+  "name": "trip-com-crawler",
+  "version": "1.0.0",
+  "description": "TypeScript + Playwright crawler for Trip.com with anti-bot detection bypass",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "crawl": "npm run build && npm run start"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "user-agents": "^1.0.1404"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/user-agents": "^1.0.4",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "web-scraping",
+    "playwright",
+    "typescript",
+    "anti-bot"
+  ],
+  "author": "",
+  "license": "MIT"
+}
